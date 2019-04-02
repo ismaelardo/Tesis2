@@ -1,7 +1,7 @@
 from entity import *
 from guardar import DatosSQL
 
-# lineas que se guardaran como comentario
+# lineas que se guardaran como comentario en sql
 l1 = '#parametros de estructura dae'
 l2 = 'dae_init_h_state_per="epoch"# esto puede ser "epoch", "val_fold", "fold" o "batch"'
 l3 = 'dae_standarization_per="each_fold" # puede ser "all_train_folds" o "each_fold"'
