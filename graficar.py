@@ -18,8 +18,9 @@ pd_data = panda_sql_lstm[
 plt.figure()
 g = sns.pairplot(pd_data, y_vars=['Loss_test_mean_valence', 'Loss_test_mean_arousal'],
                  x_vars=['sd', 'epochs', 'n', 'hidden_size2', 'hidden_size3', 'hidden_size', 'LR'])
-# plt.show() jaja
 
+# plt.show() 
+'''
 panda_sql_dae = data.tabla_df('infodae')
 # panda_sql_lstm.columns
 plt.figure()
@@ -28,3 +29,4 @@ pd_data = panda_sql_dae[['Loss_test_mean', 'Loss_test_mean', 'epochs', 'sd', 'ba
 g = sns.pairplot(pd_data, y_vars=['Loss_test_mean', 'Loss_test_mean'],
                  x_vars=['sd', 'epochs', 'n', 'LR', 'hidden_size'])
 plt.show()
+'''
