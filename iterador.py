@@ -26,7 +26,6 @@ pba = 0
 criterion = nn.MSELoss(reduction='mean')
 for sd_dae in [0.2, 0.3, 0.4]:
     for learning_rate_dae in [5e-6, 5e-4]:
-
         for hidden_size_dae in [50, 200, 800]:
             for batch_size_dae in [5, 10, 20]:
                 for n_dae in [0, 10, 50]:
