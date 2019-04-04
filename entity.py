@@ -424,6 +424,24 @@ class DAE(RNN):
                 listas_dae_valid['evol_loss_valid'].append(np.sqrt(loss_valid.item()))
                 listas_dae_valid['listLoss_valid_epoch'].append(np.sqrt(loss_valid.item()))
         return listas_dae_valid
+    def test(self,list_test_feature):
+        listLoss_test = []
+        with torch.no_grad():
+            dataset_test = featData_dae(list_test_feature, list_test_feature.copy())
+            testloader = DataLoader(dataset=dataset_test, batch_size=self.batch_size,
+                                    collate_fn=my_collate_dae, drop_last=False, shuffle=True)
+
+            for features_list_input, feature_list_target in testloader:
+                features_list_input = normalizar_data(features_list_input)
+                feature_list_target = normalizar_data(feature_list_target)
+                self.batch_size = len(features_list_input)
+                self.h = self.h[:, :self.batch_size, :]
+                self.c = self.c[:, :self.batch_size, :]
+                features_out = self(packInput(features_list_input).to(device))
+                real_features = packInput(feature_list_target).to(device)
+                loss_test = self.criterion(features_out.data, real_features.data)
+                listLoss_test.append(np.sqrt(loss_test.item()))
+        return listLoss_test
 
     def forward(self, x):
         output, (self.h, self.c) = self.lstm(x, (self.h, self.c))

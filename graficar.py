@@ -17,7 +17,7 @@ pd_data = panda_sql_lstm[
     'hidden_size', 'batch_size']]
 #plt.figure()
 g = sns.pairplot(pd_data, y_vars=['Loss_test_mean_valence', 'Loss_test_mean_arousal'],
-                 x_vars=['sd', 'epochs', 'n', 'hidden_size2', 'hidden_size3', 'hidden_size', 'LR'])
+                 x_vars=['sd', 'epochs', 'n', 'hidden_size2', 'hidden_size3', 'hidden_size', 'LR','batch_size'])
 plt.show()
 '''
 # plt.show() 
