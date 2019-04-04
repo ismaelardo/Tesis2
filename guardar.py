@@ -92,7 +92,7 @@ class DatosSQL(object):
                 valor_tipo[llave] = 'BLOB'
             else:
                 raise ValueError(
-                    "El diccionario contiene un valor no admitido en SQLite3"
+                    f'(El diccionario contiene un valor no admitido en SQLite3 ({llave}))'
                 )
         return valor_tipo
 

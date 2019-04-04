@@ -24,25 +24,50 @@ num_layers = 1
 batch_size_test = 10
 pba = 0
 criterion = nn.MSELoss(reduction='mean')
+listas_dae_train = {}
+listas_dae_valid = {}
+
 for sd_dae in [0.2, 0.3, 0.4]:
     for learning_rate_dae in [5e-6, 5e-4]:
         for hidden_size_dae in [50, 200, 800]:
             for batch_size_dae in [5, 10, 20]:
                 for n_dae in [0, 10, 50]:
-                    parametros = {'sd': sd_dae, 'LR': learning_rate_dae, 'hidden_size': hidden_size_dae,
-                                  'batch_size': batch_size_dae,
-                                  'n': n_dae, 'num_epoch': num_epoch, 'criterion': criterion}
-                    dae = DAE(input_size, num_layers, output_size_dae, parametros).to(
-                        device)
+                    parametros_dae = {'input_size': input_size, 'output_size': output_size_dae, 'sd': sd_dae,
+                                      'LR': learning_rate_dae, 'hidden_size': hidden_size_dae,
+                                      'batch_size': batch_size_dae,
+                                      'n': n_dae, 'criterion': criterion}
+                    dae = DAE(parametros_dae).to(device)
                     # dae.load_state_dict(torch.load(f_estructura+'Dae_loss_test_mean=0.457_loss_test_sd=0.033/'+'ModeloDAE'))
-                    sobre_entrenamiento = False
+                    sobre_entrenamiento = 0
 
                     for it_dae in range(10):
                         pba = pba + 1
                         start_time = time.time()
+                        listas_dae_train['evol_loss_train'] = []
+                        listas_dae_valid['evol_loss_valid'] = []
+                        best_loss_valid_mean = np.inf
+                        i_best_loss_valid_mean = []
+                        list_best_loss_valid_mean = []
 
-                        loss_valid_mean, loss_train_mean, listLoss_valid, listLoss_train, listBest_loss_valid_mean, i_best_loss_valid_mean = dae.train()
+                        for epoch in range(num_epoch):
+                            listas_dae_train['listLoss_train_epoch'] = []
+                            listas_dae_valid['listLoss_valid_epoch'] = []
+                            dae.h, dae.c = dae.init_hidden()
+                            for val_fold in np.linspace(1, len(features_crossval_standarized),
+                                                        len(features_crossval_standarized)):
+                                val_fold = int(val_fold)
 
+                                listas_dae_train['list_train_sep'], listas_dae_valid['list_valid'] = datatrain_dae(
+                                    features_crossval_standarized, val_fold, separar_train_folds=True)
+                                listas_dae_train = dae.train(listas_dae_train)
+                                listas_dae_valid = dae.valid(listas_dae_valid)
+                            loss_valid_mean_epoch = float(np.mean(listas_dae_valid['listLoss_valid_epoch']))
+                            loss_train_mean_epoch = float(np.mean(listas_dae_train['listLoss_train_epoch']))
+                            if epoch % 5 == 0:
+                                if loss_valid_mean_epoch < best_loss_valid_mean:
+                                    best_loss_valid_mean = loss_valid_mean_epoch
+                                    list_best_loss_valid_mean.append(loss_valid_mean_epoch)
+                                    i_best_loss_valid_mean.append(epoch)
                         # print(len(listLoss_valid_epoch),len(listLoss_train_epoch))
 
                         elapsed_time_train = datetime.timedelta(seconds=time.time() - start_time)
@@ -70,39 +95,37 @@ for sd_dae in [0.2, 0.3, 0.4]:
                                 loss_test = criterion(features_out.data, real_features.data)
                                 listLoss_test.append(np.sqrt(loss_test.item()))
 
-                        loss_test_std = np.std(listLoss_test)
+                        loss_test_std = float(np.std(listLoss_test))
+                        print(loss_test_std)
+                        print(type(loss_test_std))
                         loss_test_mean = np.mean(listLoss_test)
 
                         dae.batch_size = batch_size_dae
                         elapsed_time = datetime.timedelta(seconds=time.time() - start_time)
-
-                        schema_infodae = {
-                            'Loss_test_mean': loss_test_mean,
-                            'Loss_test_sd': loss_test_std,
-
-                            'Loss_valid_mean': loss_valid_mean,
-                            'Loss_train_mean': loss_train_mean,
-                            'n': n_dae,
-                            'epochs': num_epoch,
-                            'sd': sd_dae,
-                            'batch_size': batch_size_dae,
-                            'batch_size_test': batch_size_test,
-                            'hidden_size': hidden_size_dae,
-                            'LR': learning_rate_dae,
-                            'tiempo_train': str(elapsed_time_train),
-                            'tiempo_total': str(elapsed_time),
-                            'sobre_entrenamiento': sobre_entrenamiento,
-                            'estructura': 1,  # DONDE SACO ESTE DATO?,
-                            'evol_loss_valid': pickle.dumps(listLoss_valid),
-                            'evol_loss_train': pickle.dumps(listLoss_train),
-                            'evol_loss_test': pickle.dumps(listLoss_test),
-                            'list_best_loss_valid_mean': pickle.dumps(listBest_loss_valid_mean),
-                            'index_best_loss_valid_mean': pickle.dumps(i_best_loss_valid_mean),
-                            'ModeloDAE': pickle.dumps(dae.state_dict()),
-                            'pba': pba,
-                            'it': it_dae
-                            # 'comentario': commentarydae
-                        }
+                        listas_dae_train['evol_loss_train'] = pickle.dumps(listas_dae_train['evol_loss_train'])
+                        listas_dae_valid['evol_loss_valid'] = pickle.dumps(listas_dae_valid['evol_loss_valid'])
+                        parametros_dae['criterion'] = str(parametros_dae['criterion'])
+                        schema_infodae = {**parametros_dae,
+                                          'Loss_test_mean': loss_test_mean,
+                                          'Loss_test_std': loss_test_std,
+                                          'evol_loss_train': listas_dae_train['evol_loss_train'],
+                                          'evol_loss_valid': listas_dae_valid['evol_loss_valid'],
+                                          'Loss_valid_mean_last_epoch': loss_valid_mean_epoch,
+                                          'Loss_train_mean_last_epoch': loss_train_mean_epoch,
+                                          'epochs': num_epoch,
+                                          'batch_size_test': batch_size_test,
+                                          'tiempo_train': str(elapsed_time_train),
+                                          'tiempo_total': str(elapsed_time),
+                                          'sobre_entrenamiento': sobre_entrenamiento,
+                                          'estructura': 1,  # DONDE SACO ESTE DATO?,
+                                          'list_best_loss_valid_mean': pickle.dumps(list_best_loss_valid_mean),
+                                          'index_best_loss_valid_mean': pickle.dumps(i_best_loss_valid_mean),
+                                          'ModeloDAE': pickle.dumps(dae.state_dict()),
+                                          'pba': pba,
+                                          'it': it_dae
+                                          # 'comentario': commentarydae
+                                          }
+                        parametros_dae['criterion'] = criterion
                         data = DatosSQL(p_sql)
                         data.guardar(schema_infodae)
 

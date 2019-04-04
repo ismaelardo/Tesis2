@@ -3,7 +3,7 @@ import csv
 from scipy.stats.stats import pearsonr
 from os import listdir, mkdir
 import numpy as np
-#from IPython.display import clear_output
+# from IPython.display import clear_output
 import pickle
 import math
 import torch
@@ -33,14 +33,17 @@ def save_obj(obj, folder, name):
         pickle.dump(obj, f, pickle.HIGHEST_PROTOCOL)
 
     # (A)crear data de features alterada, con ruido y eliminando ciertos valores del vector:(despues de normalizar)
-features_crossval_standarized = load_obj(f_data,'D_features_crossval_standarized_per_fold')
-features_test_standarized = load_obj(f_data,'D_features_test_standarized')
-features_crossval_corto_standarized=load_obj(f_data,'S_features_crossval_corto_standarized_per_fold')
-valence_crossval_corto_standarized=load_obj(f_data,'S_valence_crossval_corto_standarized_per_fold')
-arousal_crossval_corto_standarized=load_obj(f_data,'S_arousal_crossval_corto_standarized_per_fold')
-features_test_corto_standarized=load_obj(f_data,'S_features_test_corto_standarized')
-valence_test_corto_standarized=load_obj(f_data,'S_valence_test_corto_standarized')
-arousal_test_corto_standarized=load_obj(f_data,'S_arousal_test_corto_standarized')
+
+
+features_crossval_standarized = load_obj(f_data, 'D_features_crossval_standarized_per_fold')
+features_test_standarized = load_obj(f_data, 'D_features_test_standarized')
+features_crossval_corto_standarized = load_obj(f_data, 'S_features_crossval_corto_standarized_per_fold')
+valence_crossval_corto_standarized = load_obj(f_data, 'S_valence_crossval_corto_standarized_per_fold')
+arousal_crossval_corto_standarized = load_obj(f_data, 'S_arousal_crossval_corto_standarized_per_fold')
+features_test_corto_standarized = load_obj(f_data, 'S_features_test_corto_standarized')
+valence_test_corto_standarized = load_obj(f_data, 'S_valence_test_corto_standarized')
+arousal_test_corto_standarized = load_obj(f_data, 'S_arousal_test_corto_standarized')
+
 
 def agregar_ruido(song, sd):
     ruido = np.random.normal(0, sd, song.shape)
@@ -350,105 +353,77 @@ def igualar_largos_test(features_test, valence_test, arousal_test):
     return features_test2, valence_test2, arousal_test2
 
 
-# (B)creación del modelo lstm-linear Este!pba padding linear
-class DAE(nn.Module):
-    def __init__(self, input_size, num_layers, output_size, parametros):
-        super(DAE, self).__init__()
-        self.num_layers = num_layers
+# Clase padre de modelos
+class RNN(nn.Module):
+    def __init__(self, parametros):
+        super(RNN, self).__init__()
+        self.input_size = parametros['input_size']
+        self.output_size = parametros['output_size']
         self.hidden_size = parametros['hidden_size']
-        self.input_size = input_size
-        self.output_size = output_size
+        self.LR = parametros['LR']
+        self.sd = parametros['sd']
         self.batch_size = parametros['batch_size']
+        self.n = parametros['n']
+        self.criterion = parametros['criterion']
+        self.num_layers = 1
+
+
+# (B)creación del modelo lstm-linear Este!pba padding linear
+class DAE(RNN):
+    def __init__(self, parametros):
+        super(DAE, self).__init__(parametros)
         self.h, self.c = self.init_hidden()
         self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers)
-        self.linear = nn.Linear(self.hidden_size, output_size)
-        self.sd = parametros['sd']
-        self.n=parametros['n']
-        self.LR=parametros['LR']
-        self.num_epoch=parametros['num_epoch']
-        self.criterion=parametros['criterion']
+        self.linear = nn.Linear(self.hidden_size, self.output_size)
         self.optimizer = torch.optim.Adam(self.parameters(), lr=self.LR)
-        self.features_train=features_crossval_standarized
-        self.features_test=features_test_standarized
-
-
 
     def change_batch_size(self, new_batch_size):
         self.batch_size = new_batch_size
-
 
     def init_hidden(self):
         h = torch.zeros(self.num_layers, self.batch_size, self.hidden_size).to(device)
         c = torch.zeros(self.num_layers, self.batch_size, self.hidden_size).to(device)
         return h, c
 
-
-    def train(self):
-        listLoss_train = []
-        listLoss_valid = []
-        best_loss_valid_mean = np.inf
-        i_best_loss_valid_mean = []
-        listBest_loss_valid_mean = []
-        for epoch in range(self.num_epoch):
+    def train(self, listas_dae_train):
 
 
-            listLoss_train_epoch = []
-            listLoss_valid_epoch = []
-            self.h, self.c = self.init_hidden()
+        for fold in listas_dae_train['list_train_sep']:
+            dataset = featData_dae(fold, fold.copy())
+            trainloader = DataLoader(dataset=dataset, batch_size=self.batch_size, collate_fn=my_collate_dae,
+                                     drop_last=True, shuffle=True)
+            for x, y in trainloader:
+                x = normalizar_data(x)
+                x = corromper_batch(x, self.sd, self.n)
+                y = normalizar_data(y)
+                features_out = self(packInput(x).to(device))
+                real_features = packInput(y).to(device)
+                loss_train = self.criterion(features_out.data, real_features.data)
+                self.optimizer.zero_grad()
+                loss_train.backward()
+                self.h, self.c = self.h.detach(), self.c.detach()
+                listas_dae_train['evol_loss_train'].append(np.sqrt(loss_train.item()))
 
-            for val_fold in np.linspace(1, len(self.features_train), len(self.features_train)):
-                val_fold = int(val_fold)
+                listas_dae_train['listLoss_train_epoch'].append(np.sqrt(loss_train.item()))
 
-                list_train_sep, list_valid = datatrain_dae(self.features_train, val_fold, separar_train_folds=True)
-                for fold in list_train_sep:
-                    dataset = featData_dae(fold, fold.copy())
-                    trainloader = DataLoader(dataset=dataset, batch_size=self.batch_size, collate_fn=my_collate_dae,
-                                             drop_last=True, shuffle=True)
-                    for x, y in trainloader:
-                        x = normalizar_data(x)
-                        x = corromper_batch(x, self.sd, self.n)
-                        y = normalizar_data(y)
-                        features_out = self(packInput(x).to(device))
-                        real_features = packInput(y).to(device)
-                        loss_train = self.criterion(features_out.data, real_features.data)
-                        self.optimizer.zero_grad()
-                        loss_train.backward()
-                        self.h, self.c = self.h.detach(), self.c.detach()
-                        listLoss_train.append(np.sqrt(loss_train.item()))
+                self.optimizer.step()
+        return listas_dae_train
 
-                        listLoss_train_epoch.append(np.sqrt(loss_train.item()))
-
-                        self.optimizer.step()
-
-                    self.h, self.c = self.h.detach(), self.c.detach()
-                    self.h, self.c = self.h.detach(), self.c.detach()
-                    listLoss_train.append(np.sqrt(loss_train.item()))
-
-                    listLoss_train_epoch.append(np.sqrt(loss_train.item()))
-                    self.optimizer.step()
-                with torch.no_grad():
-                    dataset = featData_dae(list_valid, list_valid.copy())
-                    trainloader = DataLoader(dataset=dataset, batch_size=self.batch_size,
-                                             collate_fn=my_collate_dae, drop_last=True, shuffle=True)
-
-                    for x, y in trainloader:
-                        x = normalizar_data(x)
-                        # x=corromper_batch(x,sd,n)
-                        y = normalizar_data(y)
-                        features_out = self(packInput(x).to(device))
-                        real_features = packInput(y).to(device)
-                        loss_valid = self.criterion(features_out.data, real_features.data)
-                        listLoss_valid.append(np.sqrt(loss_valid.item()))
-                        listLoss_valid_epoch.append(np.sqrt(loss_valid.item()))
-            loss_valid_mean = np.mean(listLoss_valid_epoch)
-            loss_train_mean = np.mean(listLoss_train_epoch)
-            if epoch % 5 == 0:
-                if loss_valid_mean < best_loss_valid_mean:
-                    best_loss_valid_mean = loss_valid_mean
-                    listBest_loss_valid_mean.append(loss_valid_mean)
-                    i_best_loss_valid_mean.append(epoch)
-
-        return loss_valid_mean,loss_train_mean,listLoss_valid,listLoss_train,listBest_loss_valid_mean,i_best_loss_valid_mean
+    def valid(self,listas_dae_valid):
+        with torch.no_grad():
+            dataset = featData_dae(listas_dae_valid['list_valid'], listas_dae_valid['list_valid'].copy())
+            trainloader = DataLoader(dataset=dataset, batch_size=self.batch_size,
+                                     collate_fn=my_collate_dae, drop_last=True, shuffle=True)
+            for x, y in trainloader:
+                x = normalizar_data(x)
+                # x=corromper_batch(x,sd,n)
+                y = normalizar_data(y)
+                features_out = self(packInput(x).to(device))
+                real_features = packInput(y).to(device)
+                loss_valid = self.criterion(features_out.data, real_features.data)
+                listas_dae_valid['evol_loss_valid'].append(np.sqrt(loss_valid.item()))
+                listas_dae_valid['listLoss_valid_epoch'].append(np.sqrt(loss_valid.item()))
+        return listas_dae_valid
 
     def forward(self, x):
         output, (self.h, self.c) = self.lstm(x, (self.h, self.c))
@@ -477,7 +452,6 @@ class LSTMsuper(nn.Module):
         self.linear_valence = nn.Linear(self.hidden_size3, self.output_size)
         self.linear_arousal = nn.Linear(self.hidden_size3, self.output_size)
 
-
     def init_hidden(self, hid_size):
         h = Variable(torch.zeros(self.num_layers, self.batch_size, hid_size)).to(device)
         c = Variable(torch.zeros(self.num_layers, self.batch_size, hid_size)).to(device)
@@ -498,5 +472,3 @@ class LSTMsuper(nn.Module):
         out2_valence = rnn.pack_padded_sequence(out_valence, outpad[1])
         out2_arousal = rnn.pack_padded_sequence(out_arousal, outpad[1])
         return out2_valence, out2_arousal
-
-
