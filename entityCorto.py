@@ -139,9 +139,9 @@ def datatrain_super(dict_feature, dict_valence, dict_arousal, valid_batch, separ
         list_valid_valence.append(dict_valence[valid_batch][song].unsqueeze(1))
         list_valid_arousal.append(dict_arousal[valid_batch][song].unsqueeze(1))
     if separar_train_folds:
-        return list_train_feature_sep, list_valid_feature, list_train_valence_sep, list_valid_valence, list_train_arousal_sep, list_valid_arousal
+        return list_train_feature_sep, list_train_valence_sep, list_train_arousal_sep, list_valid_feature, list_valid_valence, list_valid_arousal
     elif not separar_train_folds:
-        return list_train_feature, list_valid_feature, list_train_valence, list_valid_valence, list_train_arousal, list_valid_arousal
+        return list_train_feature, list_train_valence, list_train_arousal, list_valid_feature, list_valid_valence, list_valid_arousal
 
 
 def datatrain_test_super(dict_feature, dict_valence, dict_arousal):
@@ -357,31 +357,27 @@ def igualar_largos_test(features_test, valence_test, arousal_test):
 class RNN(nn.Module):
     def __init__(self, parametros):
         super(RNN, self).__init__()
-        self.input_size = parametros['input_size']
-        self.output_size = parametros['output_size']
-        self.hidden_size = parametros['hidden_size']
-        self.LR = parametros['LR']
-        self.sd = parametros['sd']
-        self.batch_size = parametros['batch_size']
-        self.n = parametros['n']
-        self.criterion = parametros['criterion']
-        self.num_layers = 1
-        self.batch_size_test = parametros['batch_size_test']
 
     def train(self):
         pass
-
     def test(self):
         pass
-
     def valid(self):
         pass
-
 
 # (B)creación del modelo lstm-linear Este!pba padding linear
 class DAE(RNN):
     def __init__(self, parametros):
         super(DAE, self).__init__(parametros)
+        self.input_size = parametros['input_size_dae']
+        self.output_size = parametros['output_size_dae']
+        self.hidden_size = parametros['hidden_size_dae']
+        self.LR = parametros['LR_dae']
+        self.sd = parametros['sd_dae']
+        self.batch_size = parametros['batch_size_dae']
+        self.n = parametros['n_dae']
+        self.criterion = parametros['criterion_dae']
+        self.num_layers = 1
         self.h, self.c = self.init_hidden()
         self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers)
         self.linear = nn.Linear(self.hidden_size, self.output_size)
@@ -395,8 +391,8 @@ class DAE(RNN):
         c = torch.zeros(self.num_layers, self.batch_size, self.hidden_size).to(device)
         return h, c
 
-    def train(self, listas_dae_train):
-        for fold in listas_dae_train['list_train_sep']:
+    def train(self, list_train_sep):
+        for fold in list_train_sep:
             dataset = featData_dae(fold, fold.copy())
             trainloader = DataLoader(dataset=dataset, batch_size=self.batch_size, collate_fn=my_collate_dae,
                                      drop_last=True, shuffle=True)
@@ -410,16 +406,12 @@ class DAE(RNN):
                 self.optimizer.zero_grad()
                 loss_train.backward()
                 self.h, self.c = self.h.detach(), self.c.detach()
-                listas_dae_train['evol_loss_train'].append(np.sqrt(loss_train.item()))
-
-                listas_dae_train['listLoss_train_epoch'].append(np.sqrt(loss_train.item()))
-
                 self.optimizer.step()
-        return listas_dae_train
 
-    def valid(self, listas_dae_valid):
+    def valid(self, list_valid):
+        list_loss_valid=[]
         with torch.no_grad():
-            dataset = featData_dae(listas_dae_valid['list_valid'], listas_dae_valid['list_valid'].copy())
+            dataset = featData_dae(list_valid, list_valid.copy())
             trainloader = DataLoader(dataset=dataset, batch_size=self.batch_size,
                                      collate_fn=my_collate_dae, drop_last=True, shuffle=True)
             for x, y in trainloader:
@@ -429,12 +421,10 @@ class DAE(RNN):
                 features_out = self(packInput(x).to(device))
                 real_features = packInput(y).to(device)
                 loss_valid = self.criterion(features_out.data, real_features.data)
-                listas_dae_valid['evol_loss_valid'].append(np.sqrt(loss_valid.item()))
-                listas_dae_valid['listLoss_valid_epoch'].append(np.sqrt(loss_valid.item()))
-        return listas_dae_valid
-
-    def test(self, list_test_feature):
-        listLoss_test = []
+                list_loss_valid.append(np.sqrt(loss_valid.item()))
+        return list_loss_valid
+    def test(self,list_test_feature):
+        list_loss_test_valid=[]
         with torch.no_grad():
             dataset_test = featData_dae(list_test_feature, list_test_feature.copy())
             testloader = DataLoader(dataset=dataset_test, batch_size=self.batch_size,
@@ -449,8 +439,8 @@ class DAE(RNN):
                 features_out = self(packInput(features_list_input).to(device))
                 real_features = packInput(feature_list_target).to(device)
                 loss_test = self.criterion(features_out.data, real_features.data)
-                listLoss_test.append(np.sqrt(loss_test.item()))
-        return listLoss_test
+                list_loss_test_valid.append(np.sqrt(loss_test.item()))
+        return np.mean(list_loss_test_valid)
 
     def forward(self, x):
         output, (self.h, self.c) = self.lstm(x, (self.h, self.c))
@@ -462,10 +452,20 @@ class DAE(RNN):
 
 # modelo clasificador
 class LSTMsuper(RNN):
-    def __init__(self, parametros, model):
+    def __init__(self,parametros, model):
         super(LSTMsuper, self).__init__(parametros)
-        self.hidden_size2 = parametros['hidden_size2']
-        self.hidden_size3 = parametros['hidden_size3']
+        self.input_size = parametros['input_size_lstm']
+        self.output_size = parametros['output_size_lstm']
+        self.hidden_size = parametros['hidden_size_lstm']
+        self.LR = parametros['LR_lstm']
+        self.sd = parametros['sd_lstm']
+        self.batch_size = parametros['batch_size_lstm']
+        self.batch_size_test = parametros['batch_size_test_lstm']
+        self.n = parametros['n_lstm']
+        self.criterion = parametros['criterion_lstm']
+        self.num_layers = 1
+        self.hidden_size2 = parametros['hidden_size2_lstm']
+        self.hidden_size3 = parametros['hidden_size3_lstm']
         self.h, self.c = self.init_hidden(self.hidden_size)
         self.h2, self.c2 = self.init_hidden(self.hidden_size2)
         self.h3, self.c3 = self.init_hidden(self.hidden_size3)
@@ -479,18 +479,18 @@ class LSTMsuper(RNN):
     def init_hidden(self, hid_size):
         h = Variable(torch.zeros(self.num_layers, self.batch_size, hid_size)).to(device)
         c = Variable(torch.zeros(self.num_layers, self.batch_size, hid_size)).to(device)
+
         return h, c
 
     def change_batch_size(self, new_batch_size):
         self.batch_size = new_batch_size
-
-    def train(self, listas_lstm_train):
-        for foldindex in range(len(listas_lstm_train['list_train_feature_sep'])):
+    def train(self, list_train_feature_sep, list_train_valence_sep, list_train_arousal_sep):
+        for foldindex in range(len(list_train_feature_sep)):
             # print(foldindex)
             dataset_train_lstm = featData_super(
-                listas_lstm_train['list_train_feature_sep'][foldindex],
-                listas_lstm_train['list_train_valence_sep'][foldindex],
-                listas_lstm_train['list_train_arousal_sep'][foldindex])
+                list_train_feature_sep[foldindex],
+                list_train_valence_sep[foldindex],
+                list_train_arousal_sep[foldindex])
             trainloader_lstm = DataLoader(
                 dataset=dataset_train_lstm,
                 batch_size=self.batch_size,
@@ -513,11 +513,7 @@ class LSTMsuper(RNN):
                 annotations_out = torch.cat(
                     [valence_out.data, arousal_out.data])
                 loss_train = self.criterion(annotations_out,
-                                            annotations_target)
-                loss_train_valence = self.criterion(valence_out.data,
-                                                    valence_pack.data)
-                loss_train_arousal = self.criterion(arousal_out.data,
-                                                    arousal_pack.data)
+                                       annotations_target)
                 self.optimizer.zero_grad()
                 loss_train.backward()
                 self.h = self.h.detach()
@@ -526,27 +522,15 @@ class LSTMsuper(RNN):
                 self.c2 = self.c2.detach()
                 self.h3 = self.h3.detach()
                 self.c3 = self.c3.detach()
-                listas_lstm_train['listLoss_train'].append(
-                    np.sqrt(loss_train.item()))
-                # listLoss_train_epoch.append(np.sqrt(loss_train.item()))
-                listas_lstm_train['listLoss_train_valence'].append(
-                    np.sqrt(loss_train_valence.item()))
-                listas_lstm_train['listLoss_train_arousal'].append(
-                    np.sqrt(loss_train_arousal.item()))
-                listas_lstm_train['listLoss_train_valence_epoch'].append(
-                    np.sqrt(loss_train_valence.item()))
-                listas_lstm_train['listLoss_train_arousal_epoch'].append(
-                    np.sqrt(loss_train_arousal.item()))
-
                 self.optimizer.step()
-        return listas_lstm_train
 
-    def valid(self, listas_lstm_valid):
+    def valid(self, list_valid_feature, list_valid_valence, list_valid_arousal, listLoss_valid=[],
+              listLoss_valid_valence=[], listLoss_valid_arousal=[]):
         with torch.no_grad():
             dataset_valid_lstm = featData_super(
-                listas_lstm_valid['list_valid_feature'],
-                listas_lstm_valid['list_valid_valence'],
-                listas_lstm_valid['list_valid_arousal'])
+                list_valid_feature,
+                list_valid_valence,
+                list_valid_arousal)
             trainloader_valid_lstm = DataLoader(
                 dataset=dataset_valid_lstm,
                 batch_size=self.batch_size,
@@ -573,21 +557,15 @@ class LSTMsuper(RNN):
                                                     valence_pack.data)
                 loss_valid_arousal = self.criterion(arousal_out.data,
                                                     arousal_pack.data)
-                listas_lstm_valid['listLoss_valid'].append(
+                listLoss_valid.append(
                     np.sqrt(loss_valid.item()))
-                listas_lstm_valid['listLoss_valid_valence'].append(
+                listLoss_valid_valence.append(
                     np.sqrt(loss_valid_valence.item()))
-                listas_lstm_valid['listLoss_valid_arousal'].append(
+                listLoss_valid_arousal.append(
                     np.sqrt(loss_valid_arousal.item()))
-                listas_lstm_valid['listLoss_valid_valence_epoch'].append(
-                    np.sqrt(loss_valid_valence.item()))
-                listas_lstm_valid['listLoss_valid_arousal_epoch'].append(
-                    np.sqrt(loss_valid_arousal.item()))
-                listas_lstm_valid['listLoss_valid_epoch'].append(
-                    np.sqrt(loss_valid.item()))
-        return listas_lstm_valid
 
-    def test(self, features_test_corto_standarized,valence_test_corto_standarized,arousal_test_corto_standarized):
+        return listLoss_valid,listLoss_valid_valence,listLoss_valid_arousal
+    def test(self,features_test_corto_standarized,valence_test_corto_standarized,arousal_test_corto_standarized):
         listLoss_test = []
         listLoss_test_valence = []
         listLoss_test_arousal = []
@@ -635,7 +613,7 @@ class LSTMsuper(RNN):
                     np.sqrt(loss_test_valence.item()))
                 listLoss_test_arousal.append(
                     np.sqrt(loss_test_arousal.item()))
-        return listLoss_test,listLoss_test_valence,listLoss_test_arousal
+        return listLoss_test, listLoss_test_valence, listLoss_test_arousal
     def forward(self, x):
         output, (self.h, self.c) = self.dae(x, (self.h, self.c))
         # print(output.data.shape)

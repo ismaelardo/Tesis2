@@ -1,7 +1,0 @@
-# importar todo
-
-
-# iterador
-
-
-#

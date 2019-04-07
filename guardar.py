@@ -3,11 +3,13 @@ import sqlite3
 import pandas as pd
 from numpy import dtype as ndtype
 
+
 class DatosSQL(object):
     """
-    Objeto que agrupa las métodos guardar, tabla_df y id_df
+    Objeto que agrupa las metodos guardar, tabla_df y id_df
     los cuales trabajan sobre la base de datos.
     """
+
     def __init__(self, path_db):
         self.path_db = path_db
 
@@ -24,6 +26,14 @@ class DatosSQL(object):
     sqltablas = 'SELECT name FROM sqlite_master WHERE type = "table"'
     sqlids = "SELECT id FROM {tabla}"
     sqlcolumnas = "PRAGMA table_info({tabla})"
+    create_tabla = 'CREATE TABLE {tabla}({tabla_corta} {tipo})'
+
+    def crear_tabla(self, name_table,columna_inicial,tipo):
+        c, conn = self._conexion()
+        c.execute(self.create_tabla.format(tabla=name_table,tabla_corta=columna_inicial,tipo=tipo))
+        conn.commit()
+        c.close()
+        conn.close()
 
     def _conexion(self):
         """
@@ -34,7 +44,7 @@ class DatosSQL(object):
         c = conn.cursor()
         return c, conn
 
-    #Funciones para inserción de datos
+    # Funciones para inserción de datos
     def _cachar_tabla(self, diccionario):
         """
         Devuelve el nombre de la tabla a partir de la
@@ -50,19 +60,21 @@ class DatosSQL(object):
             return 'infodae'
         elif 'superestructura' in diccionario.keys():
             return 'infolstm'
+        elif 'tabla_corta' in diccionario.keys():
+            return 'info_completa_corta'
         else:
             raise ValueError(
                 f'{self.diccionario} no contiene los parámetros de una tabla en la base de datos.'
             )
-        #if 'a' in diccionario.keys():
+        # if 'a' in diccionario.keys():
         #    return 'hola'
-        #elif 'modeloDAE' in diccionario.keys():
+        # elif 'modeloDAE' in diccionario.keys():
         #    return 'modelo'
-        #elif 'Loss_valid' in diccionario.keys():
+        # elif 'Loss_valid' in diccionario.keys():
         #    return 'pick'
-        #else:
+        # else:
         #    raise ValueError(f'{self.diccionario} no contiene los parámetros de una tabla en la base de datos.')
-    
+
     def _obtener_rows(self, diccionario):
         """
         Devuelve los nombres de las columnas y la tabla
@@ -70,9 +82,10 @@ class DatosSQL(object):
         """
         tabla = self._cachar_tabla(diccionario)
         rows = self._obtener_datos(self.sqlcolumnas.format(tabla=tabla), 1)
-        rows.remove('id')
-        return rows, tabla
-
+        try:
+            rows.remove('id')
+        finally:
+            return rows, tabla
 
     def _tipo_de_valor(self, valores):
         """
@@ -108,7 +121,7 @@ class DatosSQL(object):
             if llave not in llaves:
                 valores[llave] = type(valor)
         valor_tipo = self._tipo_de_valor(valores)
-        return valor_tipo 
+        return valor_tipo
 
     def _agregar_columnas(self, tabla, llaves, diccionario):
         """
@@ -143,7 +156,7 @@ class DatosSQL(object):
         """
         if len(diccionario.keys()) > 1:
             return tuple(diccionario.keys())
-        else: 
+        else:
             return str(list(diccionario.keys())).replace(']', ')').replace('[', '(')
 
     def _insertar_valores(self, tabla, diccionario):
@@ -177,7 +190,7 @@ class DatosSQL(object):
             self._agregar_columnas(tabla, llaves, diccionario)
             return self._insertar_valores(tabla, diccionario)
 
-    #Funciones para extracción de datos
+    # Funciones para extracción de datos
     def _obtener_datos(self, query, indice):
         """
         Obtiene los datos de una query, devolviéndolos
@@ -218,7 +231,7 @@ class DatosSQL(object):
             raise ValueError(
                 "No existe una instancia con ese ID en la tabla."
             )
-    
+
     def _unpickle(self, df):
         """
         Devuelve el dataframe con los objetos (i.e. los blobs
@@ -251,7 +264,7 @@ class DatosSQL(object):
         Devuelve un Pandas DataFrame con los datos de un elemento
         de la tabla, elegido por el ID
         """
-        if self._tabla_en_db(tabla) and self._id_en_tabla(id): 
+        if self._tabla_en_db(tabla) and self._id_en_tabla(id):
             c, conn = self._conexion()
             un = pd.read_sql_query(
                 self.sqlgetid.format(tabla=self.tabla, id=self.id),
@@ -267,7 +280,6 @@ class DatosSQL(object):
         Devuelve las tablas de la base de datos.
         """
         return self._obtener_datos(self.sqltablas, 0)
-
 
     def columnas(self, tabla):
         """
